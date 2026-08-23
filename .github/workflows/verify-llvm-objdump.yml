@@ -29,19 +29,37 @@ jobs:
           }
           EOF
 
-      - name: Locate generated llvm/Config/config.h
+      - name: Checkout llvm-project at llvmorg-21.1.0 (source only, for config.h generation)
+        uses: actions/checkout@v4
+        with:
+          repository: llvm/llvm-project
+          ref: llvmorg-21.1.0
+          path: llvm-project
+          sparse-checkout: |
+            llvm
+            cmake
+            third-party
+
+      - name: Generate llvm/Config/config.h via CMake configure (no build)
         run: |
-          CONFIG_H=$(find /usr -path '*llvm*/Config/config.h' 2>/dev/null | head -1)
-          if [ -z "$CONFIG_H" ]; then
-            echo "config.h not found anywhere under /usr" >&2
-            find /usr -iname 'config.h' 2>/dev/null
-            exit 1
-          fi
-          echo "Found: $CONFIG_H"
-          # config.h lives at <includedir>/llvm/Config/config.h, so the extra
-          # include path we need is <includedir> itself.
-          INCDIR=$(dirname "$(dirname "$(dirname "$CONFIG_H")")")
-          echo "CONFIG_INCDIR=$INCDIR" >> "$GITHUB_ENV"
+          # apt.llvm.org's dev package doesn't ship this generated header at
+          # all (Debian strips it as an internal build artifact), so we
+          # produce it ourselves. Configure-only, no compilation needed —
+          # CMake's configure_file() step runs during the `project()`/
+          # generation phase before any target is built.
+          cmake -S llvm-project/llvm -B build-cfg \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_TARGETS_TO_BUILD="" \
+            -DLLVM_ENABLE_PROJECTS="" \
+            -DLLVM_ENABLE_ZLIB=OFF \
+            -DLLVM_ENABLE_ZSTD=OFF \
+            -DLLVM_ENABLE_TERMINFO=OFF \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_EXAMPLES=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF
+          test -f build-cfg/include/llvm/Config/config.h
+          echo "CONFIG_INCDIR=$PWD/build-cfg/include" >> "$GITHUB_ENV"
 
       - name: Compile all llvm-objdump sources + harness against real LLVM 21
         run: |
