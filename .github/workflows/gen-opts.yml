@@ -28,6 +28,7 @@ jobs:
           sparse-checkout: |
             llvm
             cmake
+            third-party
 
       - name: Configure minimal LLVM build (tblgen only)
         run: |
