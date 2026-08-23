@@ -29,9 +29,23 @@ jobs:
           }
           EOF
 
+      - name: Locate generated llvm/Config/config.h
+        run: |
+          CONFIG_H=$(find /usr -path '*llvm*/Config/config.h' 2>/dev/null | head -1)
+          if [ -z "$CONFIG_H" ]; then
+            echo "config.h not found anywhere under /usr" >&2
+            find /usr -iname 'config.h' 2>/dev/null
+            exit 1
+          fi
+          echo "Found: $CONFIG_H"
+          # config.h lives at <includedir>/llvm/Config/config.h, so the extra
+          # include path we need is <includedir> itself.
+          INCDIR=$(dirname "$(dirname "$(dirname "$CONFIG_H")")")
+          echo "CONFIG_INCDIR=$INCDIR" >> "$GITHUB_ENV"
+
       - name: Compile all llvm-objdump sources + harness against real LLVM 21
         run: |
-          CXXFLAGS="-std=c++17 -fno-rtti -fno-exceptions -DNDEBUG $(llvm-config-21 --cxxflags)"
+          CXXFLAGS="-std=c++17 -fno-rtti -fno-exceptions -DNDEBUG -I$CONFIG_INCDIR $(llvm-config-21 --cxxflags)"
           objs=""
           for f in src/llvm-objdump/*.cpp; do
             o="/tmp/$(basename "$f" .cpp).o"
