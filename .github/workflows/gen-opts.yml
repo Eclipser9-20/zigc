@@ -8,6 +8,9 @@ on:
       - "src/zig_llvm-nm.cpp"
       - ".github/workflows/gen-opts.yml"
 
+permissions:
+  contents: write
+
 jobs:
   gen-opts:
     runs-on: ubuntu-latest
