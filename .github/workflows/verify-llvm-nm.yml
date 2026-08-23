@@ -1,0 +1,52 @@
+name: Verify vendored llvm-nm compiles and runs against real LLVM 21
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [llvm-tools-windows]
+    paths:
+      - "src/zig_llvm-nm.cpp"
+      - "src/Opts.inc"
+      - ".github/workflows/verify-llvm-nm.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 21 dev packages
+        run: |
+          wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21 all
+
+      - name: Write a tiny harness calling ZigLlvmNm_main
+        run: |
+          cat > /tmp/harness.cpp <<'EOF'
+          #include <cstdio>
+          extern "C" int ZigLlvmNm_main(int, char **);
+          int main(int argc, char **argv) {
+            return ZigLlvmNm_main(argc, argv);
+          }
+          EOF
+
+      - name: Compile zig_llvm-nm.cpp + harness against real LLVM 21
+        run: |
+          clang++-21 -std=c++17 -fno-rtti -fno-exceptions -DNDEBUG \
+            $(llvm-config-21 --cxxflags) \
+            -c src/zig_llvm-nm.cpp -o /tmp/zig_llvm-nm.o
+          clang++-21 -std=c++17 -fno-rtti -fno-exceptions \
+            /tmp/harness.cpp /tmp/zig_llvm-nm.o \
+            $(llvm-config-21 --ldflags --libs --system-libs) \
+            -o /tmp/nm-test
+
+      - name: Run it for real — build a trivial object and nm it
+        run: |
+          echo 'int zigc_probe_symbol = 42;' > /tmp/probe.c
+          clang-21 -c /tmp/probe.c -o /tmp/probe.o
+          /tmp/nm-test /tmp/probe.o | tee /tmp/nm-output.txt
+          grep -q "zigc_probe_symbol" /tmp/nm-output.txt
+
+      - name: Success
+        run: echo "zig_llvm-nm.cpp compiles, links, and correctly lists symbols against real LLVM 21."
