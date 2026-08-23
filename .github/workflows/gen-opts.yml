@@ -27,6 +27,7 @@ jobs:
           path: llvm-project
           sparse-checkout: |
             llvm
+            cmake
 
       - name: Configure minimal LLVM build (tblgen only)
         run: |
