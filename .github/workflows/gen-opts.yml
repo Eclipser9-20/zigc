@@ -6,6 +6,7 @@ on:
     branches: [llvm-tools-windows]
     paths:
       - "src/zig_llvm-nm.cpp"
+      - "src/llvm-objdump/**"
       - ".github/workflows/gen-opts.yml"
 
 permissions:
@@ -52,19 +53,31 @@ jobs:
 
       - name: Generate Opts.inc for llvm-nm
         run: |
-          mkdir -p zigc/src/llvm-nm-opts
           ./build-llvm/bin/llvm-tblgen \
             -gen-opt-parser-defs \
             llvm-project/llvm/tools/llvm-nm/Opts.td \
             -I llvm-project/llvm/include \
             -o zigc/src/Opts.inc
 
+      - name: Generate ObjdumpOpts.inc and OtoolOpts.inc for llvm-objdump
+        run: |
+          ./build-llvm/bin/llvm-tblgen \
+            -gen-opt-parser-defs \
+            zigc/src/llvm-objdump/ObjdumpOpts.td \
+            -I llvm-project/llvm/include \
+            -o zigc/src/llvm-objdump/ObjdumpOpts.inc
+          ./build-llvm/bin/llvm-tblgen \
+            -gen-opt-parser-defs \
+            zigc/src/llvm-objdump/OtoolOpts.td \
+            -I llvm-project/llvm/include \
+            -o zigc/src/llvm-objdump/OtoolOpts.inc
+
       - name: Commit and push generated file
         run: |
           cd zigc
           git config user.email "Eclipser9-20@users.noreply.github.com"
           git config user.name "Eclipser9-20"
-          git add src/Opts.inc
+          git add src/Opts.inc src/llvm-objdump/ObjdumpOpts.inc src/llvm-objdump/OtoolOpts.inc
           git diff --cached --quiet && echo "no changes" && exit 0
           git commit -m "ci: generate Opts.inc for llvm-nm from llvmorg-21.1.0 via llvm-tblgen"
           git push origin HEAD:llvm-tools-windows
