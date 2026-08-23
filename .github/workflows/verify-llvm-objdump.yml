@@ -72,7 +72,7 @@ jobs:
           done
           clang++-21 -std=c++17 -fno-rtti -fno-exceptions \
             /tmp/harness.cpp $objs \
-            $(llvm-config-21 --ldflags --libs --system-libs) \
+            $(llvm-config-21 --ldflags --libs all --system-libs) \
             -o /tmp/objdump-test
 
       - name: Run it for real — build a trivial object and disassemble/symtab it
