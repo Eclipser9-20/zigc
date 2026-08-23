@@ -1,0 +1,65 @@
+name: Generate Opts.inc for vendored LLVM tools
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [llvm-tools-windows]
+    paths:
+      - "src/zig_llvm-nm.cpp"
+      - ".github/workflows/gen-opts.yml"
+
+jobs:
+  gen-opts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout zigc branch
+        uses: actions/checkout@v4
+        with:
+          path: zigc
+          ref: llvm-tools-windows
+          fetch-depth: 0
+
+      - name: Checkout llvm-project at llvmorg-21.1.0
+        uses: actions/checkout@v4
+        with:
+          repository: llvm/llvm-project
+          ref: llvmorg-21.1.0
+          path: llvm-project
+          sparse-checkout: |
+            llvm
+
+      - name: Configure minimal LLVM build (tblgen only)
+        run: |
+          cmake -S llvm-project/llvm -B build-llvm \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_TARGETS_TO_BUILD="" \
+            -DLLVM_ENABLE_PROJECTS="" \
+            -DLLVM_ENABLE_ZLIB=OFF \
+            -DLLVM_ENABLE_ZSTD=OFF \
+            -DLLVM_ENABLE_TERMINFO=OFF \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_EXAMPLES=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF
+
+      - name: Build llvm-tblgen
+        run: cmake --build build-llvm --target llvm-tblgen -j $(nproc)
+
+      - name: Generate Opts.inc for llvm-nm
+        run: |
+          mkdir -p zigc/src/llvm-nm-opts
+          ./build-llvm/bin/llvm-tblgen \
+            -gen-opt-parser-defs \
+            llvm-project/llvm/tools/llvm-nm/Opts.td \
+            -I llvm-project/llvm/include \
+            -o zigc/src/Opts.inc
+
+      - name: Commit and push generated file
+        run: |
+          cd zigc
+          git config user.email "Eclipser9-20@users.noreply.github.com"
+          git config user.name "Eclipser9-20"
+          git add src/Opts.inc
+          git diff --cached --quiet && echo "no changes" && exit 0
+          git commit -m "ci: generate Opts.inc for llvm-nm from llvmorg-21.1.0 via llvm-tblgen"
+          git push origin HEAD:llvm-tools-windows
