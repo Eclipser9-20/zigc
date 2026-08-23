@@ -1,0 +1,56 @@
+name: Verify vendored llvm-objdump compiles and runs against real LLVM 21
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [llvm-tools-windows]
+    paths:
+      - "src/llvm-objdump/**"
+      - ".github/workflows/verify-llvm-objdump.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 21 dev packages
+        run: |
+          wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21 all
+
+      - name: Write a tiny harness calling ZigLlvmObjdump_main
+        run: |
+          cat > /tmp/harness.cpp <<'EOF'
+          extern "C" int ZigLlvmObjdump_main(int, char **);
+          int main(int argc, char **argv) {
+            return ZigLlvmObjdump_main(argc, argv);
+          }
+          EOF
+
+      - name: Compile all llvm-objdump sources + harness against real LLVM 21
+        run: |
+          CXXFLAGS="-std=c++17 -fno-rtti -fno-exceptions -DNDEBUG $(llvm-config-21 --cxxflags)"
+          objs=""
+          for f in src/llvm-objdump/*.cpp; do
+            o="/tmp/$(basename "$f" .cpp).o"
+            clang++-21 $CXXFLAGS -c "$f" -o "$o"
+            objs="$objs $o"
+          done
+          clang++-21 -std=c++17 -fno-rtti -fno-exceptions \
+            /tmp/harness.cpp $objs \
+            $(llvm-config-21 --ldflags --libs --system-libs) \
+            -o /tmp/objdump-test
+
+      - name: Run it for real — build a trivial object and disassemble/symtab it
+        run: |
+          echo 'int zigc_probe_symbol = 42;' > /tmp/probe.c
+          clang-21 -c /tmp/probe.c -o /tmp/probe.o
+          /tmp/objdump-test -t /tmp/probe.o | tee /tmp/objdump-output.txt
+          grep -q "zigc_probe_symbol" /tmp/objdump-output.txt
+          /tmp/objdump-test -h /tmp/probe.o | tee -a /tmp/objdump-output.txt
+          grep -qi "elf64" /tmp/objdump-output.txt
+
+      - name: Success
+        run: echo "llvm-objdump vendored sources compile, link, and correctly dump symbols/headers against real LLVM 21."
